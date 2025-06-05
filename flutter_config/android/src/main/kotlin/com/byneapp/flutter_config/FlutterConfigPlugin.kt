@@ -1,24 +1,22 @@
-package com.byneapp.flutter_config
-
-import android.app.Activity
 import android.content.Context
 import android.content.res.Resources
 import androidx.annotation.NonNull
 import io.flutter.Log
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
-import io.flutter.plugin.common.PluginRegistry.Registrar
 import java.lang.IllegalArgumentException
 import java.lang.reflect.Field
 
-class FlutterConfigPlugin(private val context: Context? = null): FlutterPlugin, MethodCallHandler {
+class FlutterConfigPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
-  private var applicationContext: Context? = context
-
-  private lateinit var channel : MethodChannel
+  private lateinit var channel: MethodChannel
+  private lateinit var applicationContext: Context
+  private var activity: android.app.Activity? = null  // Store Activity reference
 
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     applicationContext = flutterPluginBinding.applicationContext
@@ -26,17 +24,24 @@ class FlutterConfigPlugin(private val context: Context? = null): FlutterPlugin, 
     channel.setMethodCallHandler(this)
   }
 
-  override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+  override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
     channel.setMethodCallHandler(null)
-    applicationContext = null
   }
 
-  companion object {
-    @JvmStatic
-    fun registerWith(registrar: Registrar) {
-      val channel = MethodChannel(registrar.messenger(), "flutter_config")
-      channel.setMethodCallHandler(FlutterConfigPlugin(registrar.activity()))
-    }
+  override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+    activity = binding.activity
+  }
+
+  override fun onDetachedFromActivity() {
+    activity = null
+  }
+
+  override fun onDetachedFromActivityForConfigChanges() {
+    activity = null
+  }
+
+  override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+    activity = binding.activity
   }
 
   override fun onMethodCall(call: MethodCall, result: Result) {
@@ -52,12 +57,13 @@ class FlutterConfigPlugin(private val context: Context? = null): FlutterPlugin, 
     val variables = hashMapOf<String, Any?>()
 
     try {
-      val context = applicationContext!!.applicationContext
-      val resId = context.resources.getIdentifier("build_config_package", "string", context.packageName)
+      val resId = applicationContext.resources.getIdentifier(
+        "build_config_package", "string", applicationContext.packageName
+      )
       val className: String = try {
-        context.getString(resId)
+        applicationContext.getString(resId)
       } catch (e: Resources.NotFoundException) {
-        applicationContext!!.packageName
+        applicationContext.packageName
       }
 
       val clazz = Class.forName("$className.BuildConfig")
@@ -73,7 +79,7 @@ class FlutterConfigPlugin(private val context: Context? = null): FlutterPlugin, 
       }
 
       clazz.declaredFields.forEach {
-        variables += it.name to extractValue(it)
+        variables[it.name] = extractValue(it)
       }
     } catch (e: ClassNotFoundException) {
       Log.d("FlutterConfig", "Could not access BuildConfig")
