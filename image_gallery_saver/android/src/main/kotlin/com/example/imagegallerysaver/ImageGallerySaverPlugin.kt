@@ -1,4 +1,82 @@
-isVideo -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+package com.example.imagegallerysaver
+
+import androidx.annotation.NonNull
+import android.annotation.TargetApi
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaScannerConnection
+import android.net.Uri
+import android.os.Environment
+import android.os.Build
+import android.provider.MediaStore
+import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.MethodChannel.MethodCallHandler
+import io.flutter.plugin.common.MethodChannel.Result
+import java.io.File
+import java.io.FileInputStream
+import java.io.IOException
+import android.text.TextUtils
+import android.webkit.MimeTypeMap
+import java.io.OutputStream
+
+class ImageGallerySaverPlugin : FlutterPlugin, MethodCallHandler {
+    private lateinit var methodChannel: MethodChannel
+    private var applicationContext: Context? = null
+
+    override fun onAttachedToEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
+        this.applicationContext = binding.applicationContext
+        methodChannel = MethodChannel(binding.binaryMessenger, "image_gallery_saver")
+        methodChannel.setMethodCallHandler(this)
+    }
+
+    override fun onMethodCall(@NonNull call: MethodCall,@NonNull result: Result): Unit {
+        when (call.method) {
+            "saveImageToGallery" -> {
+                val image = call.argument<ByteArray?>("imageBytes")
+                val quality = call.argument<Int?>("quality")
+                val name = call.argument<String?>("name")
+
+                result.success(
+                    saveImageToGallery(
+                        BitmapFactory.decodeByteArray(
+                            image ?: ByteArray(0),
+                            0,
+                            image?.size ?: 0
+                        ), quality, name
+                    )
+                )
+            }
+
+            "saveFileToGallery" -> {
+                val path = call.argument<String?>("file")
+                val name = call.argument<String?>("name")
+                result.success(saveFileToGallery(path, name))
+            }
+
+            else -> result.notImplemented()
+        }
+    }
+
+    override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
+        applicationContext = null
+        methodChannel.setMethodCallHandler(null);
+    }
+
+    private fun generateUri(extension: String = "", name: String? = null): Uri? {
+        var fileName = name ?: System.currentTimeMillis().toString()
+        val mimeType = getMIMEType(extension)
+        val isVideo = mimeType?.startsWith("video")==true
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // >= android 10
+            val uri = when {
+              isVideo -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
                 else -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
             }
 
